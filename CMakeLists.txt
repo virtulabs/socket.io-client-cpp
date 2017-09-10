@@ -8,13 +8,19 @@ set(MAJOR 1)
 set(MINOR 6)
 set(PATCH 0)
 
-if(NOT CMAKE_BUILD_TYPE )
-MESSAGE(STATUS "not define build type, set to release" )
-set(CMAKE_BUILD_TYPE Release )
-elseif(NOT (${CMAKE_BUILD_TYPE} STREQUAL "Release" OR ${CMAKE_BUILD_TYPE} STREQUAL "Debug" ))
-MESSAGE(SEND_ERROR "CMAKE_BUILD_TYPE must be either Release or Debug")
-return()
-endif()
+# On platforms where single-configuration generators are supported (e.g. Make) -
+# Log what configuration we are building with. Users can change this either with
+# regeneration or with 'cmake --build . --config <type>'
+if(CMAKE_BUILD_TYPE)
+MESSAGE(STATUS
+    "Building in ${CMAKE_BUILD_TYPE} mode.\n"
+    "To change this, reconfigure with -DCMAKE_BUILD_TYPE."
+)
+endif(CMAKE_BUILD_TYPE)
+
+# Globally turning C++11 on
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 aux_source_directory(${CMAKE_CURRENT_LIST_DIR}/src ALL_SRC)
 aux_source_directory(${CMAKE_CURRENT_LIST_DIR}/src/internal ALL_SRC)
@@ -31,7 +37,13 @@ add_definitions(
     -D_WEBSOCKETPP_CPP11_FUNCTIONAL_
 )
 
-add_library(sioclient ${ALL_SRC})
+if(BUILD_SHARED_LIBS)
+set(TARGET_TYPE SHARED)
+else()
+set(TARGET_TYPE STATIC)
+endif(BUILD_SHARED_LIBS)
+
+add_library(sioclient ${TARGET_TYPE} ${ALL_SRC})
 target_include_directories(sioclient PRIVATE 
     ${CMAKE_CURRENT_LIST_DIR}/src 
     ${CMAKE_CURRENT_LIST_DIR}/lib/websocketpp 
@@ -39,21 +51,18 @@ target_include_directories(sioclient PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib/asio/asio/include
 )
 
-set_property(TARGET sioclient PROPERTY CXX_STANDARD 11)
-set_property(TARGET sioclient PROPERTY CXX_STANDARD_REQUIRED ON)
-
 if(BUILD_SHARED_LIBS)
 set_target_properties(sioclient
 	PROPERTIES
 		SOVERSION ${MAJOR}
 		VERSION ${MAJOR}.${MINOR}.${PATCH}
 	)
-endif()
+endif(BUILD_SHARED_LIBS)
 list(APPEND TARGET_LIBRARIES sioclient)
 
 find_package(OpenSSL)
 if(OPENSSL_FOUND)
-add_library(sioclient_tls ${ALL_SRC})
+add_library(sioclient_tls ${TARGET_TYPE} ${ALL_SRC})
 target_include_directories(sioclient_tls PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/src 
     ${CMAKE_CURRENT_LIST_DIR}/lib/websocketpp 
@@ -62,8 +71,6 @@ target_include_directories(sioclient_tls PRIVATE
     ${OPENSSL_INCLUDE_DIR}
 )
 
-set_property(TARGET sioclient_tls PROPERTY CXX_STANDARD 11)
-set_property(TARGET sioclient_tls PROPERTY CXX_STANDARD_REQUIRED ON)
 target_link_libraries(sioclient_tls PRIVATE ${OPENSSL_LIBRARIES} )
 target_compile_definitions(sioclient_tls PRIVATE -DSIO_TLS)
 if(BUILD_SHARED_LIBS)
@@ -72,21 +79,15 @@ set_target_properties(sioclient_tls
 		SOVERSION ${MAJOR}
 		VERSION ${MAJOR}.${MINOR}.${PATCH}
 	)
-endif()
+endif(BUILD_SHARED_LIBS)
 list(APPEND TARGET_LIBRARIES sioclient_tls)
+endif(OPENSSL_FOUND)
 
-endif()
-
-install(FILES ${ALL_HEADERS} 
-    DESTINATION "${CMAKE_CURRENT_LIST_DIR}/build/include"
-)
-
-install(TARGETS ${TARGET_LIBRARIES}
-    DESTINATION "${CMAKE_CURRENT_LIST_DIR}/build/lib/${CMAKE_BUILD_TYPE}"
-)
+install(FILES ${ALL_HEADERS} DESTINATION "include")
+install(TARGETS ${TARGET_LIBRARIES} DESTINATION "lib")
 
 if(BUILD_UNIT_TESTS)
 message(STATUS "Building with unit test support.")
 enable_testing()
 add_subdirectory(test)
-endif()
+endif(BUILD_UNIT_TESTS)
