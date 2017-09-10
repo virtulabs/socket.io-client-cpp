@@ -1,0 +1,21 @@
+# - Config file for the socketio-client package
+# - Link against either 'sioclient' or 'sioclient_tls' IMPORTed target.
+# It defines the following variable(s)
+#  SIOCLIENT_INCLUDE_DIRS - include directories for socketio-client
+#  SIOCLIENT_LIBRARY_DIRS - library directories for socketio-client
+
+# Compute the installation prefix relative to this file.
+get_filename_component(_SIOCLIENT_PREFIX "${CMAKE_CURRENT_LIST_FILE}" PATH)
+get_filename_component(_SIOCLIENT_PREFIX "${_SIOCLIENT_PREFIX}" PATH)
+if(_SIOCLIENT_PREFIX STREQUAL "/")
+  set(_SIOCLIENT_PREFIX "")
+endif()
+
+# Compute paths
+set(SIOCLIENT_INCLUDE_DIRS "${_SIOCLIENT_PREFIX}/include")
+set(SIOCLIENT_LIBRARY_DIRS "${_SIOCLIENT_PREFIX}/lib")
+ 
+# Our library dependencies (contains definitions for IMPORTED targets)
+if(NOT TARGET sioclient AND NOT TARGET sioclient_tls)
+  include("${_SIOCLIENT_PREFIX}/@EXPORT_NAME@.cmake")
+endif()
