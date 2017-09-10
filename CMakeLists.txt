@@ -2,63 +2,76 @@ cmake_minimum_required(VERSION 3.1.0 FATAL_ERROR)
 PROJECT(sioclient)
 
 option(BUILD_SHARED_LIBS "Build the shared library" OFF)
-option(Boost_USE_STATIC_LIBS "Use Boost static version" ON)
+option(BUILD_UNIT_TESTS  "Builds unit tests target" OFF)
 
 set(MAJOR 1)
 set(MINOR 6)
 set(PATCH 0)
 
-if(NOT CMAKE_BUILD_TYPE )
-MESSAGE(STATUS "not define build type, set to release" )
-set(CMAKE_BUILD_TYPE Release )
-elseif(NOT (${CMAKE_BUILD_TYPE} STREQUAL "Release" OR ${CMAKE_BUILD_TYPE} STREQUAL "Debug" ))
-MESSAGE(SEND_ERROR "CMAKE_BUILD_TYPE must be either Release or Debug")
-return()
-endif()
+# On platforms where single-configuration generators are supported (e.g. Make) -
+# Log what configuration we are building with. Users can change this either with
+# regeneration or with 'cmake --build . --config <type>'
+if(CMAKE_BUILD_TYPE)
+MESSAGE(STATUS
+    "Building in ${CMAKE_BUILD_TYPE} mode.\n"
+    "To change this, reconfigure with -DCMAKE_BUILD_TYPE."
+)
+endif(CMAKE_BUILD_TYPE)
 
-set(BOOST_VER "1.55.0" CACHE STRING "boost version" )
-
-set(Boost_USE_MULTITHREADED ON) 
-set(Boost_USE_STATIC_RUNTIME OFF) 
-find_package(Boost ${BOOST_VER} REQUIRED COMPONENTS system date_time random) 
+# Globally turning C++11 on
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 aux_source_directory(${CMAKE_CURRENT_LIST_DIR}/src ALL_SRC)
 aux_source_directory(${CMAKE_CURRENT_LIST_DIR}/src/internal ALL_SRC)
 file(GLOB ALL_HEADERS ${CMAKE_CURRENT_LIST_DIR}/src/*.h )
 set(SIO_INCLUDEDIR ${CMAKE_CURRENT_LIST_DIR})
 
-add_library(sioclient ${ALL_SRC})
-target_include_directories(sioclient PRIVATE ${Boost_INCLUDE_DIRS} 
+add_definitions(
+    # These will force ASIO to compile without Boost
+    -DBOOST_DATE_TIME_NO_LIB
+    -DBOOST_REGEX_NO_LIB
+    -DASIO_STANDALONE
+    # These will force WebsocketPP to compile with C++11
+    -D_WEBSOCKETPP_CPP11_STL_
+    -D_WEBSOCKETPP_CPP11_FUNCTIONAL_
+)
+
+if(BUILD_SHARED_LIBS)
+set(TARGET_TYPE SHARED)
+else()
+set(TARGET_TYPE STATIC)
+endif(BUILD_SHARED_LIBS)
+
+add_library(sioclient ${TARGET_TYPE} ${ALL_SRC})
+target_include_directories(sioclient PRIVATE 
     ${CMAKE_CURRENT_LIST_DIR}/src 
     ${CMAKE_CURRENT_LIST_DIR}/lib/websocketpp 
     ${CMAKE_CURRENT_LIST_DIR}/lib/rapidjson/include
+    ${CMAKE_CURRENT_LIST_DIR}/lib/asio/asio/include
 )
 
-set_property(TARGET sioclient PROPERTY CXX_STANDARD 11)
-set_property(TARGET sioclient PROPERTY CXX_STANDARD_REQUIRED ON)
-target_link_libraries(sioclient PRIVATE ${Boost_LIBRARIES})
 if(BUILD_SHARED_LIBS)
 set_target_properties(sioclient
 	PROPERTIES
 		SOVERSION ${MAJOR}
 		VERSION ${MAJOR}.${MINOR}.${PATCH}
 	)
-endif()
+endif(BUILD_SHARED_LIBS)
 list(APPEND TARGET_LIBRARIES sioclient)
 
 find_package(OpenSSL)
 if(OPENSSL_FOUND)
-add_library(sioclient_tls ${ALL_SRC})
-target_include_directories(sioclient_tls PRIVATE ${Boost_INCLUDE_DIRS} 
+add_library(sioclient_tls ${TARGET_TYPE} ${ALL_SRC})
+target_include_directories(sioclient_tls PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/src 
     ${CMAKE_CURRENT_LIST_DIR}/lib/websocketpp 
     ${CMAKE_CURRENT_LIST_DIR}/lib/rapidjson/include
+    ${CMAKE_CURRENT_LIST_DIR}/lib/asio/asio/include
     ${OPENSSL_INCLUDE_DIR}
 )
 
-set_property(TARGET sioclient_tls PROPERTY CXX_STANDARD 11)
-set_property(TARGET sioclient_tls PROPERTY CXX_STANDARD_REQUIRED ON)
-target_link_libraries(sioclient_tls PRIVATE ${Boost_LIBRARIES} ${OPENSSL_LIBRARIES} )
+target_link_libraries(sioclient_tls PRIVATE ${OPENSSL_LIBRARIES} )
 target_compile_definitions(sioclient_tls PRIVATE -DSIO_TLS)
 if(BUILD_SHARED_LIBS)
 set_target_properties(sioclient_tls
@@ -66,19 +79,29 @@ set_target_properties(sioclient_tls
 		SOVERSION ${MAJOR}
 		VERSION ${MAJOR}.${MINOR}.${PATCH}
 	)
-endif()
+endif(BUILD_SHARED_LIBS)
 list(APPEND TARGET_LIBRARIES sioclient_tls)
+endif(OPENSSL_FOUND)
 
-endif()
+install(FILES ${ALL_HEADERS} DESTINATION "include")
+install(TARGETS ${TARGET_LIBRARIES} DESTINATION "lib")
 
-install(FILES ${ALL_HEADERS} 
-    DESTINATION "${CMAKE_CURRENT_LIST_DIR}/build/include"
-)
+if(BUILD_UNIT_TESTS)
+message(STATUS "Building with unit test support.")
+enable_testing()
+add_subdirectory(test)
+endif(BUILD_UNIT_TESTS)
 
-install(TARGETS ${TARGET_LIBRARIES}
-    DESTINATION "${CMAKE_CURRENT_LIST_DIR}/build/lib/${CMAKE_BUILD_TYPE}"
-)
-
-install(FILES ${Boost_LIBRARIES} 
-    DESTINATION "${CMAKE_CURRENT_LIST_DIR}/build/lib/${CMAKE_BUILD_TYPE}"
-)
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${CMAKE_PROJECT_NAME}")
+set(CPACK_PACKAGE_VENDOR "${CMAKE_PROJECT_NAME}")
+set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+set(CPACK_PACKAGE_VERSION_MAJOR "${MAJOR}")
+set(CPACK_PACKAGE_VERSION_MINOR "${MINOR}")
+set(CPACK_PACKAGE_VERSION_PATCH "${PATCH}")
+if(WIN32)
+set(CPACK_GENERATOR "ZIP")
+else(WIN32)
+set(CPACK_GENERATOR "TGZ")
+endif(WIN32)
+include(CPack)
